@@ -36,7 +36,9 @@ function! s:Refresh(build_dir)
     call s:Status("Refreshing java cache")
 
     let ebp = substitute(a:build_dir, '/', '\\/', 'g')
-    let classfiles = split(system("find ".a:build_dir." -type f | sed -nre 's/".ebp."\\/(.*).class/\\1/p'"), '\n')
+    let cmd = "find ".a:build_dir." -type f | sed -ne 's/".ebp."\\/\\(.*\\).class/\\1/p'"
+    call s:Debug(cmd)
+    let classfiles = split(system(cmd), '\n')
 
     let lines = []
     let all = []

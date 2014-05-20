@@ -32,11 +32,11 @@ class dotdict:
     def has_key(self, key):
         return self.__dict__.has_key(key)
 
-class JavapError(Exception):
+class JavadError(Exception):
     def __init__(self, value):
         self.value = value
     def __str__(self):
-        return repr(self.value)
+        return self.value
 
 def extract_name(method_signature):
     pre, args = method_signature.split(":")
@@ -44,62 +44,70 @@ def extract_name(method_signature):
 
 # returns (type, object) for parsed line
 class JavadParser:
-    def __init__(this):
-        this.source = None
-        this.classdef = None
-        this.methods = []
+    def __init__(self):
+        self.parsing_path = ""
+        self.source = None
+        self.classdef = None
+        self.methods = []
 
-    def get_classdef(this):
-        return this.classdef
+    def get_classdef(self):
+        return self.classdef
 
-    def get_source(this):
-        return this.source
+    def get_source(self):
+        return self.source
 
-    def get_methods(this):
-        return this.methods
+    def get_methods(self):
+        return self.methods
 
+    def sanity_check(self):
+        if self.source == None:
+            raise JavadError("Did not parse source file.  Was '-g' passed to javac at the time of compile?")
 
-    def parse_handle(this, file):
+    def parse_handle(self, file):
+        lineno=1
         for line in file:
-            this.parse_line(line)
+            self.parse_line(line, lineno)
+            lineno+=1
+        self.sanity_check()
 
-    def parse_path(this, path):
+    def parse_path(self, path):
+        self.parsing_path = path # for errors
         file = open(path)
         try:
-            this.parse_handle(file)
-        except JavapError, e:
-            print "Error parsing %s" % path
-            print e.value
+            self.parse_handle(file)
+        except JavadError, e:
+            raise JavadError("Error parsing %s: %s" % (path, e.value))
         file.close()
+        self.sanity_check()
 
 
-    def parse_line(this, line):
+    def parse_line(self, line, lineno=0):
         m=source_pattern.match(line)
         if m != None:
-            this.source = m.group(1)
+            self.source = m.group(1)
 
         m=class_pattern.match(line)
         if m != None:
-            this.classdef = dotdict()
-            this.classdef.access = m.group(1)
-            this.classdef.abstract = m.group(2)
-            this.classdef.final = m.group(3)
-            this.classdef.type = m.group(4)
-            this.classdef.name = m.group(5)
-            package_sep_index = this.classdef.name.rfind('.')
+            self.classdef = dotdict()
+            self.classdef.access = m.group(1)
+            self.classdef.abstract = m.group(2)
+            self.classdef.final = m.group(3)
+            self.classdef.type = m.group(4)
+            self.classdef.name = m.group(5)
+            package_sep_index = self.classdef.name.rfind('.')
             if package_sep_index != -1:
-                this.classdef.package = this.classdef.name[0:package_sep_index]
+                self.classdef.package = self.classdef.name[0:package_sep_index]
             else:
-                this.classdef.package = ''
-            this.classdef.extends = m.group(7)
+                self.classdef.package = ''
+            self.classdef.extends = m.group(7)
             implements = m.group(9)
             if implements == None:
-                this.classdef.implements = []
+                self.classdef.implements = []
             else:
-                this.classdef.implements = implements.split(",")
-            #print "name:", this.classdef.name
-            #print "Extends:", this.classdef.extends
-            #print "Implements:", this.classdef.implements
+                self.classdef.implements = implements.split(",")
+            #print "name:", self.classdef.name
+            #print "Extends:", self.classdef.extends
+            #print "Implements:", self.classdef.implements
 
         m=static_pattern.match(line)
         if m != None:
@@ -107,31 +115,7 @@ class JavadParser:
             method.name = 'static'
             method.signature = '%s.static' % (classname)
             method.invokations = []
-            this.methods.append(method)
-
-        m=method_pattern.match(line)
-        if m != None:
-            method = dotdict()
-            method.access = m.group(1)
-            method.static = m.group(2)
-            method.synchronized = m.group(3)
-            method.abstract = m.group(4)
-            method.return_type = m.group(5)
-            method.name = m.group(6)
-            method.arguments = m.group(7).split(',')
-            throws = m.group(9)
-            if throws == None:
-                method.throws = []
-            else:
-                method.throws = throws.split(',')
-
-            arguments = map(str.strip, method.arguments)
-            arguments = map(argtrans, arguments)
-            arguments = ''.join(arguments)
-            method.signature = "%s.%s:(%s)%s" % (this.classdef.name, method.name, arguments, argtrans(method.return_type))
-            method.invokations = []
-
-            this.methods.append(method)
+            self.methods.append(method)
 
         m=constructor_pattern.match(line)
         if m != None:
@@ -152,10 +136,36 @@ class JavadParser:
             arguments = map(str.strip, method.arguments)
             arguments = map(argtrans, arguments)
             arguments = ''.join(arguments)
-            method.signature = "%s.%s:(%s)V" % (this.classdef.name, method.name, arguments) # const always shows void return
+            method.signature = "%s.%s:(%s)V" % (self.classdef.name, method.name, arguments) # const always shows void return
             method.invokations = []
 
-            this.methods.append(method)
+            self.methods.append(method)
+
+        else: #test for method only if not a constructor
+
+            m=method_pattern.match(line)
+            if m != None:
+                method = dotdict()
+                method.access = m.group(1)
+                method.static = m.group(2)
+                method.synchronized = m.group(3)
+                method.abstract = m.group(4)
+                method.return_type = m.group(5)
+                method.name = m.group(6)
+                method.arguments = m.group(7).split(',')
+                throws = m.group(9)
+                if throws == None:
+                    method.throws = []
+                else:
+                    method.throws = throws.split(',')
+
+                arguments = map(str.strip, method.arguments)
+                arguments = map(argtrans, arguments)
+                arguments = ''.join(arguments)
+                method.signature = "%s.%s:(%s)%s" % (self.classdef.name, method.name, arguments, argtrans(method.return_type))
+                method.invokations = []
+
+                self.methods.append(method)
 
         m=invoke_pattern.match(line)
         if m != None:
@@ -165,7 +175,7 @@ class JavadParser:
             invokation.method_signature = m.group(3) # what I'm calling
 
             if invokation.method_signature.find(".") == -1:
-                invokation.classname = this.classdef.name
+                invokation.classname = self.classdef.name
                 invokation.method = invokation.method_signature
                 invokation.method_signature = "%s.%s" % (invokation.classname,invokation.method)
             else:
@@ -174,17 +184,17 @@ class JavadParser:
 
             invokation.name = extract_name(invokation.method_signature)
 
-            if len(this.methods) == 0:
-                raise JavapError("Invocation without method definition")
+            if len(self.methods) == 0:
+                raise JavadError("Invocation without method definition")
 
-            this.methods[-1].invokations.append(invokation)
+            self.methods[-1].invokations.append(invokation)
 
         m=lineno_pattern.match(line)
         if m != None:
-            if len(this.methods) == 0:
-                raise JavapError("%s Matched lineno_pattern without method in %s" % (line, this.source))
+            if len(self.methods) == 0:
+                raise JavadError("%s Matched lineno_pattern without method in %s" % (line, self.source))
 
-            method = this.methods[-1]
+            method = self.methods[-1]
 
             if not method.has_key('linerefs'):
                 method.linerefs = []
@@ -195,7 +205,7 @@ class JavadParser:
             method.linerefs.append(lineref)
             #print '%s:%s -> %s:%s' % (method, m.group(2), sourcefile, m.group(1))
 
-# Translates 'byte' into 'B' and 'java.lang.Object' into 'Ljava.lang.object;'
+# Translates 'byte' into 'B' and 'java/lang/Object[]' into 'Ljava.lang.object[;'
 def argtrans(a):
     if a == '':
         return ''
@@ -212,6 +222,7 @@ def argtrans(a):
     m=object_pattern.match(a)
     if m != None:
         type = "L"+m.group(1)
+        type = type.replace('.', '/')
         if m.group(2) == '[]':
             type+='['
         return type+";"
@@ -223,7 +234,7 @@ def find_lineno(method, index):
     try:
         index_list = marshal.loads(db[method])
         curindex = -1
-        cursource = None
+        cursource = (None, -1)
         for i, source, lineno in index_list:
             #print i, source
             if i <= index:
@@ -232,7 +243,7 @@ def find_lineno(method, index):
                     cursource = (source, lineno)
         return cursource
     except KeyError:
-        return "Error finding linenos for %s" % method
+        raise Exception("Error finding linenos for %s" % method)
 
 # Gets list of class (or interface) names that extend or implement classname
 def getsubclasses(classname):
@@ -279,7 +290,6 @@ def find_signature(javad_path, target_classname, target_method):
     for method in parser.get_methods():
         for invokation in method.invokations:
             if invokation.method == target_method:
-                #print invokation
                 if invokation.type in ['virtual', 'interface']:
                     acceptable_classnames = [invokation.classname] + getsubclasses(invokation.classname)
                 else:
@@ -289,9 +299,10 @@ def find_signature(javad_path, target_classname, target_method):
                 if target_classname in acceptable_classnames:
                     package = parser.classdef.package
                     sourcefilename, sourcelineno = find_lineno(method.signature, invokation.index)
-                    print '%s:%s:%d' % (package.replace('.', '/'), sourcefilename, sourcelineno)
+                    if sourcefilename != None:
+                        print '%s:%s:%d' % (package.replace('.', '/'), sourcefilename, sourcelineno)
 
-# This program assumes that 
+# This program assumes that
 # * All java files have compiled successfully
 # * All class files have been parsed with javad and stored in /tmp/jcall
 if __name__ == '__main__':

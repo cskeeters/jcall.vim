@@ -99,7 +99,7 @@ def get_class_files(builddir, filename, packagepath):
     if packagepath != '':
         classpattern = packagepath+"/"+sourcename
 
-    return getoutput('cd %s; find . -wholename "./%s*.class" -type f | sed -re "s/..(.*)/\\1/" ' % (builddir, classpattern)).split('\n')
+    return getoutput('cd %s; find . -wholename "./%s*.class" -type f | sed -e "s/..\(.*\)/\\1/" ' % (builddir, classpattern)).split('\n')
 
 if __name__ == "__main__":
 

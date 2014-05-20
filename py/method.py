@@ -4,6 +4,7 @@ import re
 import dbm
 import marshal
 from jcall import argtrans
+from jcall import JavadError
 from jcall import JavadParser
 
 def getoutput(cmd):
@@ -71,7 +72,7 @@ def getMethod(filename, lineno):
     m = methodp.match(line)
     if m != None:
         return m.group(2)
-    return None
+    raise Exception("Could not find method name")
 
 # tries to parse the source code inself (gasp) and return a method signature
 def get_method_signatures(builddir, filepath, lineno, packagepath):
@@ -96,36 +97,40 @@ def get_class_files(builddir, filename, packagepath):
     if packagepath != '':
         classpattern = packagepath+"/"+sourcename
 
-    return getoutput('cd %s; find . -wholename "./%s*.class" -type f | sed -re "s/..(.*)/\\1/" ' % (builddir, classpattern)).split('\n')
+    return getoutput('cd %s; find . -wholename "./%s*.class" -type f | sed -e "s/..\(.*\)/\\1/" ' % (builddir, classpattern)).split('\n')
 
 if __name__ == "__main__":
 
-    filepath = sys.argv[1]
-    filename = os.path.basename(filepath)
-    lineno = int(sys.argv[2])
-    builddir = os.path.normpath(sys.argv[3])
-    packagename = getPackageName(filepath)
-    if packagename == None:
-        packagename = ''
-    packagepath = packagename.replace('.', '/')
+    try:
+        filepath = sys.argv[1]
+        filename = os.path.basename(filepath)
+        lineno = int(sys.argv[2])
+        builddir = os.path.normpath(sys.argv[3])
+        packagename = getPackageName(filepath)
+        if packagename == None:
+            packagename = ''
+        packagepath = packagename.replace('.', '/')
 
-    cur_method=None # closest match to targets: filename:lineno
-    cur_index=None
-    cur_lineno=-1
+        cur_method=None # closest match to targets: filename:lineno
+        cur_index=None
+        cur_lineno=-1
 
-    for classfile in get_class_files(builddir, filename, packagepath):
-        classname, classext = os.path.splitext(classfile)
-        (method, index, lno) = get_closest(classname, builddir, filename, lineno+2)
-        #print cur_method, cur_index, cur_lineno
-        #print method, index, lno
-        if (lno > cur_lineno) and (lno <= lineno+2):
-            #print lno, cur_lineno, lineno
-            cur_method = method
-            cur_index = index
-            cur_lineno = lno
-    if cur_lineno != -1:
-        print cur_method
-    else:
-        signatures = get_method_signatures(builddir, filepath, lineno, packagepath)
-        for signature in signatures:
-            print signature
+        for classfile in get_class_files(builddir, filename, packagepath):
+            classname, classext = os.path.splitext(classfile)
+            (method, index, lno) = get_closest(classname, builddir, filename, lineno+2)
+            #print cur_method, cur_index, cur_lineno
+            #print method, index, lno
+            if (lno > cur_lineno) and (lno <= lineno+2):
+                #print lno, cur_lineno, lineno
+                cur_method = method
+                cur_index = index
+                cur_lineno = lno
+        if cur_lineno != -1:
+            print cur_method
+        else:
+            signatures = get_method_signatures(builddir, filepath, lineno, packagepath)
+            for signature in signatures:
+                print signature
+    except JavadError, e:
+        print e
+        sys.exit(1)
