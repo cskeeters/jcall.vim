@@ -4,14 +4,15 @@ This plugin was inspired by the call hierarchy function in eclipse.  This
 plug-in adds this functionality into vim.
 
 Eclipse has a built-in java compiler that enables it to determine where else
-in the code base a member function is being called.  As a result, eclipse must
-know how to compile the code base, so it must know about dependant libraries.  
+in the code base a member function is being called.  As a consequence, eclipse
+must know how to compile the code base, so it must know about dependent
+libraries.  
 
 This plugin takes an alternative approach.  It relies on you to compile the
 codebase and the plugin uses javap (included with the SDK) to decompile the
 class file and extract complete class names and canonical method signatures
-which can be used to determine where methods are called.  As a result, the
-plugin must be provided the path to the "build" folders have pre-compiled
+which can be used to determine where methods are called.  As a consequence,
+the plugin must be provided the path to the "build" folders have pre-compiled
 class files.
 
 The plugin supports multiple projects where the source path and build path are
