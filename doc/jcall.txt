@@ -1,0 +1,61 @@
+  *jcall.txt*	Plugin for reviewing call hierarchy
+
+This plugin was inspired by the call hierarchy function in eclipse.  This
+plug-in adds this functionality into vim.
+
+Eclipse has a built-in java compiler that enables it to determine where else
+in the code base a member function is being called.  As a result, eclipse must
+know how to compile the code base, so it must know about dependant libraries.  
+
+This plugin takes an alternative approach.  It relies on you to compile the
+codebase and the plugin uses javap (included with the SDK) to decompile the
+class file and extract complete class names and canonical method signatures
+which can be used to determine where methods are called.  As a result, the
+plugin must be provided the path to the "build" folders have pre-compiled
+class files.
+
+The plugin supports multiple projects where the source path and build path are
+specified as pairs in g:jcall_src_build_pairs.
+
+The plugin builds a cache in g:jcall_tmp_path (/tmp/jcall).  If classes are
+renamed or deleted, the cache needs to be cleared.
+
+
+						*jcall-mappings*
+The following mapping is suggested:
+
+nmap <leader>ch <Plug>JCallOpen
+	Open the quickfix window populated with calls to the function the
+	cursor is over.
+
+nmap <f3> <Plug>JCallJump
+	Jumps to the method under the cursor.
+
+nmap <leader>cch <Plug>JCallClear
+	Clears the cashe for the current project.
+
+						*jcall-settings*
+
+						*g:jcall_src_build_pairs*
+Specifies a list of java projects for which jcall might be used.
+	let g:jcall_src_build_pairs = [
+		\ ['/home/user/prj1/src', '/home/user/prj1/build'],
+		\ ['/home/user/prj2/src', '/home/user/prj2/build'],
+		\ ]
+
+						*g:jcall_status*
+(Optional) Tells jcall to show progress as class files are decompiled and
+searched.
+	let g:jcall_status = 1
+						*g:jcall_debug*
+(Optional) Tells jcall to show debugging statements as class files are 
+decompiled and searched.
+	let g:jcall_debug = 1
+
+						*g:jcall_tmp_path*
+(Optional) Where the cache will live.  This folder will contain javap files
+which are the output of `javad -c -l -private` and two databases.
+	let g:jcall_tmp_path = "/tmp/jcall"
+
+
+vim:tw=78:fo=tcq2:ts=8:ft=help:norl:
