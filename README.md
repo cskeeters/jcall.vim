@@ -5,10 +5,10 @@ JCall is a plugin for vim.  It allows a user to navigate java code in two ways (
 * See from where a method might be called. (Call Hierarchy)
 * Jump to a method's definition. 
 
-# Installation
+## Installation
 
 See Vundle or Pathogen
 
-# Usage
+## Usage
 
 See the [vim help](doc/jcall.txt)
