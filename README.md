@@ -7,6 +7,10 @@ JCall is a plugin for vim.  It allows a user to navigate java code in two ways (
 
 ## Installation
 
+This plugin requires python 2.4+ and support in vim.  You can test your vim by seeing if the following command returns a 1.
+
+    :echo has('python')
+
 See Vundle or Pathogen
 
 ## Usage
