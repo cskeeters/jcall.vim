@@ -11,10 +11,29 @@ def write_subclasses(build_path, subclasses):
     for classname, subclasses in subclasses.iteritems():
         classsig[classname] = marshal.dumps(list(set(subclasses)))
 
+def write_superclasses(build_path, superclasses):
+    supers = dbm.open('/tmp/jcall/'+build_path+'/supers', 'c')
+
+    for classname, superclasses in superclasses.iteritems():
+        supers[classname] = marshal.dumps(list(set(superclasses)))
+
 def write_linenos(build_path, linerecords):
     db = dbm.open('/tmp/jcall/'+build_path+'/linenos', 'c')
     for method_signature, index_list in linerecords.iteritems():
         db[method_signature] = marshal.dumps(index_list)
+
+def get_super_classes(classname, extends):
+    superclasses = []
+    try:
+        c = extends[classname]
+        if c!= "java.lang.Object":
+            superclasses.append(c)
+            superclasses += get_super_classes(c, extends)
+    except KeyError, e:
+        #FIXME: need to get from other libraries?
+        pass
+
+    return superclasses
 
 def get_sub_classes(classname, extends, implements):
     subclasses = []
@@ -37,7 +56,6 @@ if __name__ == "__main__":
 
     build_path = sys.argv[1] # where class files live
 
-    subclasses = {}
     linerecords = {}
 
     classnames = []
@@ -73,11 +91,15 @@ if __name__ == "__main__":
                 except Exception:
                     print "Error parsing javap file %s" % name
 
+    subclasses = {}
+    superclasses = {}
     for classname in classnames:
         #print "Looking for classname", classname
         subs = get_sub_classes(classname, extends, implements)
+        supers = get_super_classes(classname, extends)
         #print classname, subs
         subclasses[classname] = list(set(subs))
 
     write_subclasses(build_path, subclasses)
+    write_superclasses(build_path, subclasses)
     write_linenos(build_path, linerecords)

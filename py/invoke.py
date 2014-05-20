@@ -8,11 +8,11 @@ from jcall import splitinvoke
 from jcall import JavadParser
 from jcall import check_in
 
-# Gets list of class (or interface) names that extend or implement classname
-def getsubclasses(classname):
+def getsuperclasses(classname):
     try:
-        return marshal.loads(classsig[classname])
+        return marshal.loads(supers[classname])
     except KeyError:
+        print "Warning: Could not find superclasses for %s" % classname
         return []
 
 def getoutput(cmd):
@@ -44,7 +44,7 @@ def find_signature(javad_path, acceptable_classnames, invokation):
 
 def search_for(invokation):
     if invokation.type in ['virtual', 'interface']:
-        acceptable_classnames = [invokation.classname] + getsubclasses(invokation.classname)
+        acceptable_classnames = [invokation.classname] + getsuperclasses(invokation.classname)
     else:
         acceptable_classnames = [invokation.classname]
 
@@ -114,7 +114,7 @@ if __name__ == "__main__":
     packagepath = packagename.replace('.', '/')
 
     db = dbm.open('/tmp/jcall'+builddir+'/linenos', 'c')
-    classsig = dbm.open('/tmp/jcall'+builddir+'/classsig', 'c')
+    supers = dbm.open('/tmp/jcall'+builddir+'/supers', 'c')
 
     for classfile in get_class_files(builddir, filename, packagepath):
         classname, classext = os.path.splitext(classfile)
