@@ -59,4 +59,8 @@ databases.
 	let g:jcall_tmp_path = "/tmp/jcall"
 
 
+						*jcall_credit*
+JCall was developed by Chad Skeeters <github.com/cskeeters>.
+Distributed under Vim's |license|.
+
 vim:tw=78:fo=tcq2:ts=8:ft=help:norl:
