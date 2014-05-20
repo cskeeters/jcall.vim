@@ -53,8 +53,9 @@ decompiled and searched.
 	let g:jcall_debug = 1
 
 						*g:jcall_tmp_path*
-(Optional) Where the cache will live.  This folder will contain javap files
-which are the output of `javad -c -l -private` and two databases.
+(Optional) (Not yet supported) Where the cache will live.  This folder will
+contain javap files which are the output of `javad -c -l -private` and two
+databases.
 	let g:jcall_tmp_path = "/tmp/jcall"
 
 
