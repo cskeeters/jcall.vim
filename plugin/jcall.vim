@@ -34,11 +34,22 @@ endfunction
 
 function! s:Refresh(build_dir)
     call s:Status("Refreshing java cache")
+    if empty(glob(a:build_dir))
+        echoerr "Build directory ".a:build_dir." does not exist."
+    endif
 
     let ebp = substitute(a:build_dir, '/', '\\/', 'g')
     let cmd = "find ".a:build_dir." -type f | sed -ne 's/".ebp."\\/\\(.*\\).class/\\1/p'"
     call s:Debug(cmd)
     let classfiles = split(system(cmd), '\n')
+
+    if v:shell_error != 0
+        echoerr classfiles[0]
+    else
+        if len(classfiles) == 0
+            echoerr "No .class files found.  Have you compiled your project?"
+        endif
+    endif
 
     let lines = []
     let all = []
@@ -55,12 +66,7 @@ function! s:Refresh(build_dir)
     let default = ["default: \\"]
     call map(all, '"\t\t".v:val." \\"')
     let default += l:all
-    let default += [''] "need extra line because last dep has \
-    let default += ["\t@if [ \"$(CHANGED)\" == \"1\" ]; then \\"]
-    let default += ["\t  rm -f ".g:jcall_tmp_path.a:build_dir.'/classsig.*; \']
-    let default += ["\t  rm -f ".g:jcall_tmp_path.a:build_dir.'/linenos.*; \']
-    let default += ["\t  /usr/bin/python ".g:jcall_py_path."/extract.py '".a:build_dir."'; \\"]
-    let default += ["\tfi"]
+    let default += [''] "need extra line because last dep has slash
     let default += [""]
 
     "let pattern_rule  = ['%.javap:']
@@ -70,16 +76,17 @@ function! s:Refresh(build_dir)
     let pattern_rule  = []
     "Default package
     let pattern_rule += ['%.javap:: '.a:build_dir.'/%.class']
-    let pattern_rule += ['	$(eval CHANGED=1)']
     let pattern_rule += ['	dir=`dirname ''$@''`; mkdir -p "$$dir"']
     let pattern_rule += ['	javap -classpath '''.a:build_dir.''' -c -l -private ''$*'' > ''$@''']
+    let pattern_rule += ['	javap -classpath '''.a:build_dir.''' -c -l -private ''$*'' > ''$@''']
+    let pattern_rule += ['	/usr/bin/python '.g:jcall_py_path."/extract.py '".a:build_dir."' '$@' '".g:jcall_tmp_path."' ; \\"]
     let pattern_rule += ['']
 
     for pkg in keys(packages)
         let pattern_rule += [pkg.'/%.javap:: '.a:build_dir.'/'.pkg.'/%.class']
-        let pattern_rule += ['	$(eval CHANGED=1)']
         let pattern_rule += ['	dir=`dirname ''$@''`; mkdir -p "$$dir"']
         let pattern_rule += ['	javap -classpath '''.a:build_dir.''' -c -l -private '''.pkg.'/$*'' > ''$@''']
+        let pattern_rule += ['	/usr/bin/python '.g:jcall_py_path."/extract.py '".a:build_dir."' '$@' '".g:jcall_tmp_path."' ; \\"]
         let pattern_rule += ['']
     endfor
 
@@ -101,7 +108,7 @@ endfunction
 function! s:GetMethodSignature(filepath, lineno, build_dir)
     let filename = fnamemodify(a:filepath, ":t")
     call s:Status("Finding Method signature at ".filename.":".a:lineno)
-    let javam = '/usr/bin/python '.g:jcall_py_path.'/method.py "'.a:filepath.'" '.a:lineno.' "'.a:build_dir.'"'
+    let javam = '/usr/bin/python '.g:jcall_py_path.'/method.py "'.a:filepath.'" '.a:lineno.' "'.a:build_dir.'" '.' "'.g:jcall_tmp_path.'"'
     call s:Debug(javam)
     let data = system(javam)
     if v:shell_error != 0
@@ -110,15 +117,17 @@ function! s:GetMethodSignature(filepath, lineno, build_dir)
         let method_signatures = split(data, '\n')
         if len(method_signatures) == 1
             return method_signatures[0]
-        else
-            let i=0
-            while i < len(method_signatures)
-                let number = i + 1
-                echo number.') '.method_signatures[i]
-                let i += 1
-            endwhile
-            let number = input("Which method?")
-            return method_signatures[l:number-1]
+        else 
+            if len(method_signatures) > 1
+                let i=0
+                while i < len(method_signatures)
+                    let number = i + 1
+                    echo number.') '.method_signatures[i]
+                    let i += 1
+                endwhile
+                let number = input("Which method?")
+                return method_signatures[l:number-1]
+            endif
         endif
     endif
 endfunction
@@ -181,7 +190,7 @@ function! s:GetCalls(method_signature, src_dir, build_dir)
 
     " Signature HAS to be in single quotes otherwise innerclasses (with $)
     " will be mangled
-    let search_cmd = '/usr/bin/python '.g:jcall_py_path.'/jcall.py "'.a:build_dir.'" '''.a:method_signature.''''
+    let search_cmd = '/usr/bin/python '.g:jcall_py_path.'/jcall.py "'.a:build_dir.'" '''.a:method_signature.''' '''.g:jcall_tmp_path.''''
     call s:Debug("Search: ".search_cmd)
     let invocations = split(system(search_cmd), '\n')
     let quickfix_locations = []
@@ -202,14 +211,19 @@ endfunction
 function! s:GetDefs(filepath, lineno, method_name, src_dir, build_dir)
     call s:Status("Searching for method definitions")
 
-    let invoke_cmd = '/usr/bin/python '.g:jcall_py_path.'/invoke.py "'.a:filepath.'" '.a:lineno.' "'.a:method_name.'" "'.a:build_dir.'"'
+    let invoke_cmd = '/usr/bin/python '.g:jcall_py_path.'/invoke.py "'.a:filepath.'" '.a:lineno.' "'.a:method_name.'" "'.a:build_dir.'" "'.g:jcall_tmp_path.'"'
     call s:Debug("Invoke: ".invoke_cmd)
     let output = split(system(invoke_cmd), '\n')
     if v:shell_error != 0
-        for line in output
-            echom line
-        endfor
-        echoerr "Command returned ".v:shell_error
+        if v:shell_error == 100
+            echom output[0]
+            return []
+        else
+            for line in output
+                echom line
+            endfor
+            echoerr "Command returned ".v:shell_error
+        endif
     endif
 
     let quickfix_locations = []

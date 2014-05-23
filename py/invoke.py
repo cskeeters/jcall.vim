@@ -1,19 +1,12 @@
 import sys
 import os
 import re
-import dbm
-import marshal
+import shelve
 from jcall import argtrans
 from jcall import splitinvoke
 from jcall import JavadParser
 from jcall import check_in
-
-def getsuperclasses(classname):
-    try:
-        return marshal.loads(supers[classname])
-    except KeyError:
-        print "Warning: Could not find superclasses for %s" % classname
-        return []
+from jcall import JTree
 
 def getoutput(cmd):
     pipe = os.popen(cmd, 'r', 4096)
@@ -21,15 +14,8 @@ def getoutput(cmd):
     pipe.close()
     return output
 
-def find_signature(javad_path, acceptable_classnames, invokation):
+def find_signature(parser, acceptable_classnames, invokation):
     target_classname, target_method = splitinvoke(invokation.method_signature)
-    #print "Searching %s for %s.%s" % (javad_path, target_classname, target_method)
-
-    if not check_in(javad_path, target_method):
-        return
-
-    parser = JavadParser()
-    parser.parse_path(javad_path)
 
     if parser.classdef.name in acceptable_classnames:
         for method in parser.get_methods():
@@ -37,22 +23,24 @@ def find_signature(javad_path, acceptable_classnames, invokation):
             #print cur_specific_signature, target_method
             if cur_specific_signature == target_method:
                 package = parser.classdef.package.replace('.', '/')
-                sourcefilename = parser.source
-                if len(method.linerefs) > 0:
-                    print '%s:%s:%d' % (package, sourcefilename, method.linerefs[0].lineno-1)
+                try:
+                    if len(method.linerefs) > 0:
+                        print '%s:%s:%d' % (package, parser.source, method.linerefs[0].lineno-1)
+                except AttributeError, e:
+                    #print "Method %s has no line reference information, it may be abstract (or an interface)" % method.signature
+                    #sys.exit(100)
+                    print '%s:%s:%d' % (package, parser.source, 1)
 
 
-def search_for(invokation):
-    if invokation.type in ['virtual', 'interface']:
-        acceptable_classnames = [invokation.classname] + getsuperclasses(invokation.classname)
-    else:
-        acceptable_classnames = [invokation.classname]
+def search_for(jtree, invokation):
+    acceptable_classnames = [invokation.classname]
+    if invokation.type  == 'virtual':
+        acceptable_classnames = [jtree.get_lowest(invokation.classname, invokation.method)] + jtree.get_desc_classes(invokation.classname)
+    if invokation.type == 'interface':
+        acceptable_classnames += jtree.get_ii(invokation.classname, invokation.method)
 
-    for root, dirs, files in os.walk('/tmp/jcall'+builddir):
-        for name in files:
-            if name.endswith('.javap'):
-                find_signature(os.path.join(root, name), acceptable_classnames, invokation)
-
+    for parser in jtree.get_parsers():
+        find_signature(parser, acceptable_classnames, invokation)
 
 def get_next_invoke(method, index, target_name):
 
@@ -68,54 +56,32 @@ def get_next_invoke(method, index, target_name):
         sys.exit(1)
     return cur_invokation
 
-def print_invokes(classfile, builddir, target_filename, target_lineno, target_name):
-    lines = getoutput("/usr/bin/javap -classpath '%s' -c -l -private '%s' " % (builddir, classfile)).split('\n')
-    parser = JavadParser()
-    for line in lines:
-        parser.parse_line(line)
+def print_invokes(jtree, parser, target_lineno, target_name):
+    for method in parser.get_methods():
+        if method.has_key('linerefs'):
+            for lineref in method.linerefs:
+                if lineref.lineno == target_lineno:
+                    #print "match line number at ", parser.source, lineref.lineno, lineref.index
+                    invokation = get_next_invoke(method, lineref.index, target_name)
+                    search_for(jtree, invokation)
 
-    if parser.source == target_filename:
-        for method in parser.get_methods():
-            if method.has_key('linerefs'):
-                for lineref in method.linerefs:
-                    if lineref.lineno == target_lineno:
-                        #print "match line number at ", parser.source, lineref.lineno, lineref.index
-                        invokation = get_next_invoke(method, lineref.index, target_name)
-                        search_for(invokation)
-
-
-def getPackageName(filename):
-    packagep = re.compile(".*package +(.*) *;.*")
-    for line in open(filename):
-        m = packagep.match(line)
-        if m != None:
-            return m.group(1)
-    return None
-
-
-def get_class_files(builddir, filename, packagepath):
-    sourcename, sourceext = os.path.splitext(filename)
-    classpattern=sourcename
-    if packagepath != '':
-        classpattern = packagepath+"/"+sourcename
-
-    return getoutput('cd %s; find . -wholename "./%s*.class" -type f | sed -e "s/..\(.*\)/\\1/" ' % (builddir, classpattern)).split('\n')
+def get_parsers(jtree, filename):
+    parsers = []
+    for parser in jtree.get_parsers():
+        if parser.source == filename:
+            parsers.append(parser)
+    return parsers
 
 if __name__ == "__main__":
 
     filepath = sys.argv[1]
-    filename = os.path.basename(filepath)
     lineno = int(sys.argv[2])
     target_name = sys.argv[3]
-    builddir = os.path.normpath(sys.argv[4])
-    packagename = getPackageName(filepath)
-    if packagename == None:
-        packagename = ''
-    packagepath = packagename.replace('.', '/')
+    build_path = os.path.normpath(sys.argv[4])
+    tmp_path = os.path.normpath(sys.argv[5])
 
-    db = dbm.open('/tmp/jcall'+builddir+'/linenos', 'c')
-    supers = dbm.open('/tmp/jcall'+builddir+'/supers', 'c')
+    filename = os.path.basename(filepath)
+    jtree = JTree(tmp_path, build_path)
 
-    for classfile in get_class_files(builddir, filename, packagepath):
-        classname, classext = os.path.splitext(classfile)
-        print_invokes(classname, builddir, filename, lineno, target_name)
+    for parser in get_parsers(jtree, filename):
+        print_invokes(jtree, parser, lineno, target_name)

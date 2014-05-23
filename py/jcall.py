@@ -1,8 +1,7 @@
 import os
 import sys
 import re
-import dbm
-import marshal
+import shelve
 import threading
 
 source_pattern=re.compile('^Compiled from "(.*)"')
@@ -228,29 +227,125 @@ def argtrans(a):
         return type+";"
     raise Exception("could not translate argument "+a)
 
-# Returns Main.java:34 for (my.Main.main:(I[C)V, 0)
-def find_lineno(method, index):
-    #print "Finding %s:%s" % (method, index)
-    try:
-        index_list = marshal.loads(db[method])
-        curindex = -1
-        cursource = (None, -1)
-        for i, source, lineno in index_list:
-            #print i, source
-            if i <= index:
-                if i > curindex:
-                    curindex = i;
-                    cursource = (source, lineno)
-        return cursource
-    except KeyError:
-        raise Exception("Error finding linenos for %s" % method)
+class JTree:
+    def __init__(self, tmp_path, build_path):
+        # Not all decedents, just children
+        self.child_classes = {}
+        self.implementing_classes = {}
+        self.parsed = shelve.open(tmp_path+build_path+'/parsed')
+        self.init_trees()
 
-# Gets list of class (or interface) names that extend or implement classname
-def getsubclasses(classname):
-    try:
-        return marshal.loads(classsig[classname])
-    except KeyError:
+    def __del__(self):
+        self.parsed.close()
+
+    def get_parsers(self):
+        for key in self.parsed.keys():
+            yield self.parsed[key]
+
+    def init_trees(self):
+        for classname in self.parsed.keys():
+            parser = self.parsed[classname]
+
+            if not self.child_classes.has_key(parser.classdef.extends):
+                self.child_classes[parser.classdef.extends] = [classname]
+            else:
+                self.child_classes[parser.classdef.extends] += [classname]
+
+        for classname in self.parsed.keys():
+            parser = self.parsed[classname]
+
+            for impl in parser.classdef.implements:
+                if not self.implementing_classes.has_key(impl):
+                    self.implementing_classes[impl] = [classname] + self.get_desc_classes(classname)
+                else:
+                    self.implementing_classes[impl] += [classname] + self.get_desc_classes(classname)
+
+    def get_desc_classes(self, classname):
+        try:
+            desc = []
+            for child in self.child_classes[classname]:
+                desc += [child] + self.get_desc_classes(child)
+            return desc
+        except KeyError, e:
+            # Hard to know if this is a system level class or the db is corrupt
+            return []
+
+    def get_implementing_classes(self, interfacename):
+        try:
+            return self.implementing_classes[interfacename]
+        except KeyError, e:
+            return []
+
+
+    # Lower defined as further away from Object in the class hierarchy
+    def get_lowest(self, classname, method_signature):
+        found = False
+        try:
+            parser = self.parsed[classname]
+            #print "checking", parser.classdef.name, "which extends", parser.classdef.extends
+            for method in parser.get_methods():
+                c, m = splitinvoke(method.signature)
+                #print m, method_signature
+                if m == method_signature:
+                    return classname
+
+            if not found:
+                return self.get_lowest(parser.classdef.extends, method_signature)
+
+        except KeyError, e:
+            pass # We're probably not looking for invokations of Object methods
+            #print "Error getting parser for "+classname+".  "
+            #raise Exception("Error getting parser for "+classname+".  ")
+
+        return None
+
+    def get_ii(self, interfacename, method_signature):
+        defining_interface = self.get_lowest(interfacename, method_signature)
+        if None != defining_interface:
+            interfaces = [defining_interface] + self.get_desc_classes(defining_interface)
+            #then find all classes that implement any of those interfaces
+            potential_classes = set()
+            for interface in interfaces:
+                classes = self.get_implementing_classes(interface)
+                for c in classes:
+                    potential_classes.add(self.get_lowest(c, method_signature))
+            return interfaces + list(potential_classes)
         return []
+
+    def get_acceptable_classnames(self, invokation):
+        acceptable_classnames = [invokation.classname]
+        if invokation.type  == 'virtual':
+            acceptable_classnames = [jtree.get_lowest(invokation.classname, target_method)] + jtree.get_desc_classes(invokation.classname)
+        if invokation.type == 'interface':
+            acceptable_classnames = jtree.get_ii(invokation.classname, target_method)
+        return acceptable_classnames
+
+    def get_index_list(self, method_signature):
+        classname, method = splitinvoke(method_signature)
+        parser = self.parsed[classname]
+        for method in parser.get_methods():
+            if method.signature == method_signature:
+                return parser.source, method.linerefs
+        raise Exception("Could not find linerefs for %s" % method_signature)
+
+    # Returns Main.java:34 for (my.Main.main:(I[C)V, 0)
+    def find_lineno(self, method_signature, index):
+        #print "Finding %s:%s" % (method, index)
+        try:
+            source, index_list = self.get_index_list(method_signature)
+            curindex = -1
+            curlineno = None
+            for record in index_list:
+                i = record['index']
+                lineno = record['lineno']
+                #print i, source
+                if i <= index:
+                    if i > curindex:
+                        curindex = i;
+                        curlineno = lineno
+            return (source, curlineno)
+        except KeyError:
+            raise Exception("Error finding linenos for %s" % method)
 
 # seperates classname from methodname
 def splitinvoke(method_signature):
@@ -278,46 +373,31 @@ def check_in(javad_path, target_method):
         if line.find(method_name) != -1:
             return True
 
-def find_signature(javad_path, target_classname, target_method):
-    #print "Searching %s for %s.%s" % (javad_path, target_classname, target_method)
-
-    if not check_in(javad_path, target_method):
-        return
-
-    parser = JavadParser()
-    parser.parse_path(javad_path)
-
-    for method in parser.get_methods():
-        for invokation in method.invokations:
-            if invokation.method == target_method:
-                if invokation.type in ['virtual', 'interface']:
-                    acceptable_classnames = [invokation.classname] + getsubclasses(invokation.classname)
-                else:
-                    acceptable_classnames = [invokation.classname]
-
-                #print acceptable_classnames
-                if target_classname in acceptable_classnames:
-                    package = parser.classdef.package
-                    sourcefilename, sourcelineno = find_lineno(method.signature, invokation.index)
-                    if sourcefilename != None:
-                        print '%s:%s:%d' % (package.replace('.', '/'), sourcefilename, sourcelineno)
-
 # This program assumes that
 # * All java files have compiled successfully
-# * All class files have been parsed with javad and stored in /tmp/jcall
+# * All class files have been parsed with javad and stored in g:jcall_tmp_path (/tmp/jcall)
 if __name__ == '__main__':
     build_path = sys.argv[1] # where class files live
     target_method_signature = sys.argv[2] # something like my.Student.setName(Ljava.lang.String;)V
+    tmp_path = sys.argv[3] # where class files live
     #print target_method_signature
 
     target_classname, target_method = splitinvoke(target_method_signature)
 
-    db = dbm.open('/tmp/jcall'+build_path+'/linenos', 'c')
-    classsig = dbm.open('/tmp/jcall'+build_path+'/classsig', 'c')
-
+    jtree = JTree(tmp_path, build_path)
     #print "Searching for %s %s in %s" % (target_classname, target_method, build_path)
 
-    for root, dirs, files in os.walk('/tmp/jcall'+build_path):
-        for name in files:
-            if name.endswith('.javap'):
-                find_signature(os.path.join(root, name), target_classname, target_method)
+    for parser in jtree.get_parsers():
+        for method in parser.get_methods():
+            for invokation in method.invokations:
+                if invokation.method == target_method:
+                    #print "Method %s.%s, %s" % (invokation.classname, invokation.method, invokation.type)
+
+                    acceptable_classnames = jtree.get_acceptable_classnames(invokation)
+
+                    #print target_classname, acceptable_classnames
+                    if target_classname in acceptable_classnames:
+                        package = parser.classdef.package
+                        sourcefilename, sourcelineno = jtree.find_lineno(method.signature, invokation.index)
+                        if sourcefilename != None:
+                            print '%s:%s:%d' % (package.replace('.', '/'), sourcefilename, sourcelineno)
