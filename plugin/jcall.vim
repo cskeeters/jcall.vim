@@ -317,11 +317,11 @@ function! s:Clear(filepath)
 endfunction
 
 noremap <unique> <script> <Plug>JCallOpen  <SID>Open
-noremap <SID>Open :call <SID>Open(expand('%:p'),line('.'))<CR>
+noremap <silent> <SID>Open :call <SID>Open(expand('%:p'),line('.'))<CR>
 noremenu <script> Plugin.JCall <SID>Open
 
 noremap <unique> <script> <Plug>JCallJump  <SID>Jump
-noremap <SID>Jump :call <SID>Jump(expand('%:p'),line('.'), expand('<cword>'))<CR>
+noremap <silent> <SID>Jump :call <SID>Jump(expand('%:p'),line('.'), expand('<cword>'))<CR>
 noremenu <script> Plugin.JCallJump <SID>Jump
 
 noremap <unique> <script> <Plug>JCallClear  <SID>Clear
