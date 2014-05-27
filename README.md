@@ -17,6 +17,9 @@ See Vundle or Pathogen
 
 ## Usage
 
+![Screencast of open](https://raw.githubusercontent.com/cskeeters/i/master/jcall.gif)
+![Screencast of jump](https://raw.githubusercontent.com/cskeeters/i/master/jcall_jump.gif)
+
 See the [vim help](doc/jcall.txt)
 
 ## Developer Info
