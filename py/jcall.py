@@ -260,6 +260,19 @@ class JTree:
                 else:
                     self.implementing_classes[impl] += [classname] + self.get_desc_classes(classname)
 
+    # Returns a lists of ansestor classes including classname.
+    def add_super_classes(self, classname):
+        sup = []
+        try:
+            current = classname
+            while current != 'java.lang.Object' and current != None:
+                sup += [current]
+                current = self.parsed[current].classdef.extends
+            return sup
+        except KeyError, e:
+            # return as far as we got
+            return sup
+
     def get_desc_classes(self, classname):
         try:
             desc = []
@@ -299,6 +312,15 @@ class JTree:
 
         return None
 
+    # Gets a list of interfaces for the classname specified
+    def get_impl(self, classname):
+        impl = []
+        super_classes = jtree.add_super_classes(classname)
+        for c in super_classes:
+            impl += self.parsed[c].classdef.implements
+        return impl
+
+    # Gets the list of interfaces and classes that could be called as a result of an invoke interface command.
     def get_ii(self, interfacename, method_signature):
         defining_interface = self.get_lowest(interfacename, method_signature)
         if None != defining_interface:
@@ -314,8 +336,13 @@ class JTree:
 
     def get_acceptable_classnames(self, invokation):
         acceptable_classnames = [invokation.classname]
+        #print
+        #print invokation.type, invokation.method_signature
         if invokation.type  == 'virtual':
-            acceptable_classnames = [jtree.get_lowest(invokation.classname, target_method)] + jtree.get_desc_classes(invokation.classname)
+            classnames = [jtree.get_lowest(invokation.classname, target_method)] + jtree.get_desc_classes(invokation.classname)
+            implemented_interfaces = reduce(lambda x,y: x+y, map(jtree.get_impl, classnames), [])
+            acceptable_interfaces = list(set(reduce(lambda x,y:x+y,map(jtree.add_super_classes, implemented_interfaces), [])))
+            acceptable_classnames = acceptable_interfaces + classnames
         if invokation.type == 'interface':
             acceptable_classnames = jtree.get_ii(invokation.classname, target_method)
         return acceptable_classnames
