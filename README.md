@@ -29,24 +29,3 @@ This plugin is beta quality at the moment.  It works by calling javap for each c
 ## Testing
 
 To checkout that the plugin is working, the [jcall_test](https://github.com/cskeeters/jcall_test) repository has some basic java code that can help verify correct functionality.
-
-### Preliminary steps
-
-1. Checkout jcall_test
-2. Use ant to compile (has to have compiled code to work)
-3. Install the plugin
-4. [Configure mappings](doc/jcall.txt)
-5. Configure project setting in `g:jcall_src_build_pairs`
-6. Restart vim
-
-## Test Cases:
-
-1. Basic call hierarchy works.
-  * Edit chad/Test.java
-  * Move cursor to the body of doHi
-  * Trigger JCall `,ch`
-  * Should jump to the doHi call in main()
-2. Basic jump works.
-  * Move the cursor over doHi
-  * `f3` to jump back to doHi
-  * Should jump to the doHi definition
