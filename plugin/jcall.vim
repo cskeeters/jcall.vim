@@ -1,7 +1,7 @@
 if exists("loaded_jcall")
   finish
 endif
-"let loaded_jcall = 1
+let loaded_jcall = 1
 
 let g:jcall_path = expand('<sfile>')
 let g:jcall_py_path = fnamemodify(g:jcall_path, ":p:h:h").'/py'
